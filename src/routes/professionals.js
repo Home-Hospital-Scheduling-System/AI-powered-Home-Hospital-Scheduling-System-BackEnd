@@ -187,27 +187,21 @@ router.put('/:id/working-hours', verifyToken, async (req, res) => {
     if (profError) throw profError
     if (!professional) return res.status(404).json({ error: 'Professional not found' })
 
-    // Delete existing working hours
-    await supabase
-      .from('working_hours')
-      .delete()
-      .eq('professional_id', professional.id)
-
-    // Insert new working hours
+    // Upsert working hours: update existing by id, insert new ones, keep others intact
     if (working_hours.length > 0) {
       const hoursWithProfId = working_hours.map(h => ({
         ...h,
         professional_id: professional.id
       }))
 
-      const { error: insertError } = await supabase
+      const { error: upsertError } = await supabase
         .from('working_hours')
-        .insert(hoursWithProfId)
+        .upsert(hoursWithProfId, { onConflict: 'id' })
 
-      if (insertError) throw insertError
+      if (upsertError) throw upsertError
     }
 
-    res.json({ message: 'Working hours updated successfully' })
+    res.json({ message: 'Working hours saved' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
