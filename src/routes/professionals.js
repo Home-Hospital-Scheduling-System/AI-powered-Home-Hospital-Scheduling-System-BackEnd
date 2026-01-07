@@ -108,6 +108,58 @@ router.get('/specializations', verifyToken, async (req, res) => {
   }
 })
 
+// Bulk working hours by profile_id (UUIDs)
+router.get('/working-hours/bulk', verifyToken, async (req, res) => {
+  try {
+    const raw = req.query.profile_ids || ''
+    const profileIds = raw.split(',').map(s => s.trim()).filter(Boolean)
+
+    if (profileIds.length === 0) {
+      return res.status(400).json({ error: 'profile_ids query param is required' })
+    }
+
+    // Map profile_id UUIDs -> professional integer ids
+    const { data: pros, error: prosError } = await supabase
+      .from('professionals')
+      .select('id, profile_id')
+      .in('profile_id', profileIds)
+
+    if (prosError) throw prosError
+
+    const proIdByProfileId = {}
+    const profileIdByProId = {}
+    for (const p of pros || []) {
+      proIdByProfileId[p.profile_id] = p.id
+      profileIdByProId[p.id] = p.profile_id
+    }
+
+    const proIds = Object.keys(profileIdByProId).map(id => parseInt(id, 10)).filter(id => !Number.isNaN(id))
+
+    if (proIds.length === 0) {
+      return res.json({})
+    }
+
+    const { data: hours, error: hoursError } = await supabase
+      .from('working_hours')
+      .select('*')
+      .in('professional_id', proIds)
+      .order('weekday', { ascending: true })
+
+    if (hoursError) throw hoursError
+
+    const grouped = {}
+    for (const h of hours || []) {
+      const profileId = profileIdByProId[h.professional_id]
+      if (!grouped[profileId]) grouped[profileId] = []
+      grouped[profileId].push(h)
+    }
+
+    res.json(grouped)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Get single professional by profile_id (UUID)
 router.get('/:id', verifyToken, async (req, res) => {
   try {
