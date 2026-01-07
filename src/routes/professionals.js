@@ -92,7 +92,7 @@ router.get('/by-area/:area', verifyToken, async (req, res) => {
   }
 })
 
-// Get single professional
+// Get single professional by profile_id (UUID)
 router.get('/:id', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -104,7 +104,7 @@ router.get('/:id', verifyToken, async (req, res) => {
         professional_service_areas (service_area, is_primary),
         working_hours (weekday, start_time, end_time)
       `)
-      .eq('id', req.params.id)
+      .eq('profile_id', req.params.id)
       .single()
 
     if (error) throw error
@@ -114,13 +114,23 @@ router.get('/:id', verifyToken, async (req, res) => {
   }
 })
 
-// Get professional's working hours
+// Get professional's working hours by profile_id (UUID)
 router.get('/:id/working-hours', verifyToken, async (req, res) => {
   try {
+    // First get the professional's integer ID from profile_id (UUID)
+    const { data: professional, error: profError } = await supabase
+      .from('professionals')
+      .select('id')
+      .eq('profile_id', req.params.id)
+      .single()
+
+    if (profError) throw profError
+    if (!professional) return res.status(404).json({ error: 'Professional not found' })
+
     const { data, error } = await supabase
       .from('working_hours')
       .select('*')
-      .eq('professional_id', req.params.id)
+      .eq('professional_id', professional.id)
       .order('weekday', { ascending: true })
 
     if (error) throw error
@@ -130,22 +140,31 @@ router.get('/:id/working-hours', verifyToken, async (req, res) => {
   }
 })
 
-// Update professional's working hours
+// Update professional's working hours by profile_id (UUID)
 router.put('/:id/working-hours', verifyToken, async (req, res) => {
   try {
     const { working_hours } = req.body
-    const professionalId = req.params.id
+
+    // First get the professional's integer ID from profile_id (UUID)
+    const { data: professional, error: profError } = await supabase
+      .from('professionals')
+      .select('id')
+      .eq('profile_id', req.params.id)
+      .single()
+
+    if (profError) throw profError
+    if (!professional) return res.status(404).json({ error: 'Professional not found' })
 
     // Delete existing working hours
     await supabase
       .from('working_hours')
       .delete()
-      .eq('professional_id', professionalId)
+      .eq('professional_id', professional.id)
 
     // Insert new working hours
     const hoursWithProfId = working_hours.map(h => ({
       ...h,
-      professional_id: professionalId
+      professional_id: professional.id
     }))
 
     const { data, error } = await supabase
