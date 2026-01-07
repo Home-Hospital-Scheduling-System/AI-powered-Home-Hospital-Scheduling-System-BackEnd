@@ -207,4 +207,30 @@ router.put('/:id/working-hours', verifyToken, async (req, res) => {
   }
 })
 
+// Delete a single working hour (accepts profile_id UUID or professional integer id)
+router.delete('/:id/working-hours/:workingHourId', verifyToken, async (req, res) => {
+  try {
+    const { workingHourId } = req.params
+    const { data: professional, error: profError } = await resolveProfessionalId(req.params.id)
+
+    if (profError) throw profError
+    if (!professional) return res.status(404).json({ error: 'Professional not found' })
+
+    const whId = parseInt(workingHourId, 10)
+    if (Number.isNaN(whId)) return res.status(400).json({ error: 'Invalid working hour id' })
+
+    const { error: deleteError } = await supabase
+      .from('working_hours')
+      .delete()
+      .eq('id', whId)
+      .eq('professional_id', professional.id)
+
+    if (deleteError) throw deleteError
+
+    res.json({ message: 'Working hour deleted' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
