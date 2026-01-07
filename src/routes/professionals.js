@@ -92,6 +92,22 @@ router.get('/by-area/:area', verifyToken, async (req, res) => {
   }
 })
 
+// List all unique specializations
+router.get('/specializations', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('professional_specializations')
+      .select('specialization')
+
+    if (error) throw error
+
+    const unique = [...new Set((data || []).map(row => row.specialization).filter(Boolean))]
+    res.json(unique)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Get single professional by profile_id (UUID)
 router.get('/:id', verifyToken, async (req, res) => {
   try {
