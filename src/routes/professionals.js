@@ -130,15 +130,32 @@ router.get('/:id', verifyToken, async (req, res) => {
   }
 })
 
-// Get professional's working hours by profile_id (UUID)
+// Helper to resolve professional.id from either profile_id (UUID) or numeric id
+async function resolveProfessionalId(idParam) {
+  const isUuid = typeof idParam === 'string' && idParam.includes('-') && idParam.length >= 32
+
+  const query = supabase
+    .from('professionals')
+    .select('id')
+    .limit(1)
+
+  if (isUuid) {
+    query.eq('profile_id', idParam)
+  } else {
+    // Fallback: treat as integer primary key
+    const intId = parseInt(idParam, 10)
+    if (Number.isNaN(intId)) return { error: new Error('Invalid professional identifier') }
+    query.eq('id', intId)
+  }
+
+  const { data, error } = await query.single()
+  return { data, error }
+}
+
+// Get professional's working hours (accepts profile_id UUID or professional integer id)
 router.get('/:id/working-hours', verifyToken, async (req, res) => {
   try {
-    // First get the professional's integer ID from profile_id (UUID)
-    const { data: professional, error: profError } = await supabase
-      .from('professionals')
-      .select('id')
-      .eq('profile_id', req.params.id)
-      .single()
+    const { data: professional, error: profError } = await resolveProfessionalId(req.params.id)
 
     if (profError) throw profError
     if (!professional) return res.status(404).json({ error: 'Professional not found' })
@@ -156,17 +173,16 @@ router.get('/:id/working-hours', verifyToken, async (req, res) => {
   }
 })
 
-// Update professional's working hours by profile_id (UUID)
+// Update professional's working hours (accepts profile_id UUID or professional integer id)
 router.put('/:id/working-hours', verifyToken, async (req, res) => {
   try {
     const { working_hours } = req.body
 
-    // First get the professional's integer ID from profile_id (UUID)
-    const { data: professional, error: profError } = await supabase
-      .from('professionals')
-      .select('id')
-      .eq('profile_id', req.params.id)
-      .single()
+    if (!Array.isArray(working_hours)) {
+      return res.status(400).json({ error: 'working_hours must be an array' })
+    }
+
+    const { data: professional, error: profError } = await resolveProfessionalId(req.params.id)
 
     if (profError) throw profError
     if (!professional) return res.status(404).json({ error: 'Professional not found' })
@@ -178,18 +194,20 @@ router.put('/:id/working-hours', verifyToken, async (req, res) => {
       .eq('professional_id', professional.id)
 
     // Insert new working hours
-    const hoursWithProfId = working_hours.map(h => ({
-      ...h,
-      professional_id: professional.id
-    }))
+    if (working_hours.length > 0) {
+      const hoursWithProfId = working_hours.map(h => ({
+        ...h,
+        professional_id: professional.id
+      }))
 
-    const { data, error } = await supabase
-      .from('working_hours')
-      .insert(hoursWithProfId)
-      .select()
+      const { error: insertError } = await supabase
+        .from('working_hours')
+        .insert(hoursWithProfId)
 
-    if (error) throw error
-    res.json(data)
+      if (insertError) throw insertError
+    }
+
+    res.json({ message: 'Working hours updated successfully' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
